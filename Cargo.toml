@@ -1,0 +1,27 @@
+[package]
+name = "gray-mediagen"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.91"
+license = "MIT"
+description = "Merged media generation plugin for the gray agent harness: imagegen + videogen."
+
+[[bin]]
+name = "mediagen"
+path = "src/main.rs"
+
+[dependencies]
+serde_json = "1"
+
+[profile.release]
+strip = true
+
+# Dev builds: full DWARF bloats the binary and every edit pays the link.
+# Line tables keep file:line in panics and backtraces; deps carry none
+# (nobody steps into tokio). Need a debugger? CARGO_PROFILE_DEV_DEBUG=2
+# for that one build.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
