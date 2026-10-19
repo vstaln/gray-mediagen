@@ -97,7 +97,12 @@ fn b64_decode(s: &str) -> Result<Vec<u8>, String> {
 }
 
 /// POST JSON with a bearer token; returns (status, body text).
-fn post_json(url: &str, token: &str, body: &Value, auth_kind: &str) -> Result<(u16, String), String> {
+fn post_json(
+    url: &str,
+    token: &str,
+    body: &Value,
+    auth_kind: &str,
+) -> Result<(u16, String), String> {
     let auth = if auth_kind == "fal" {
         format!("Authorization: Key {token}")
     } else {
@@ -105,10 +110,18 @@ fn post_json(url: &str, token: &str, body: &Value, auth_kind: &str) -> Result<(u
     };
     let out = std::process::Command::new("curl")
         .args([
-            "-sS", "--max-time", "120", "-w", "\n%{http_code}",
-            "-X", "POST", url,
-            "-H", &auth,
-            "-H", "Content-Type: application/json",
+            "-sS",
+            "--max-time",
+            "120",
+            "-w",
+            "\n%{http_code}",
+            "-X",
+            "POST",
+            url,
+            "-H",
+            &auth,
+            "-H",
+            "Content-Type: application/json",
             "-d",
         ])
         .arg(body.to_string())
@@ -118,7 +131,13 @@ fn post_json(url: &str, token: &str, body: &Value, auth_kind: &str) -> Result<(u
 }
 
 fn get(url: &str, token: &str, auth_kind: &str) -> Result<(u16, String), String> {
-    let mut args: Vec<String> = vec!["-sS".into(), "--max-time".into(), "30".into(), "-w".into(), "\n%{http_code}".into()];
+    let mut args: Vec<String> = vec![
+        "-sS".into(),
+        "--max-time".into(),
+        "30".into(),
+        "-w".into(),
+        "\n%{http_code}".into(),
+    ];
     if !token.is_empty() {
         args.push("-H".into());
         args.push(if auth_kind == "fal" {
@@ -140,7 +159,10 @@ fn split_status(out: std::process::Output) -> Result<(u16, String), String> {
     let (body, status) = text.rsplit_once('\n').unwrap_or((&text, "0"));
     let status: u16 = status.trim().parse().unwrap_or(0);
     if status == 0 && !out.status.success() {
-        return Err(format!("curl failed: {}", String::from_utf8_lossy(&out.stderr).trim()));
+        return Err(format!(
+            "curl failed: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
     }
     Ok((status, body.to_string()))
 }
@@ -160,7 +182,11 @@ fn api_err(provider: &str, status: u16, body: &str) -> String {
             v.pointer("/error/message")
                 .or_else(|| v.pointer("/error"))
                 .or_else(|| v.pointer("/detail"))
-                .and_then(|d| d.as_str().map(str::to_string).or_else(|| Some(d.to_string())))
+                .and_then(|d| {
+                    d.as_str()
+                        .map(str::to_string)
+                        .or_else(|| Some(d.to_string()))
+                })
         })
         .unwrap_or_else(|| body.chars().take(300).collect());
     format!("{provider} → HTTP {status}: {detail}")
@@ -230,10 +256,21 @@ fn gen_fal(token: &str, model: &str, prompt: &str, size: &str) -> Result<ImageBy
     if let Some(u) = v.pointer("/images/0/url").and_then(Value::as_str) {
         return Ok(ImageBytes::Url(u.to_string()));
     }
-    let status_url = v.get("status_url").and_then(Value::as_str).unwrap_or("").to_string();
-    let response_url = v.get("response_url").and_then(Value::as_str).unwrap_or("").to_string();
+    let status_url = v
+        .get("status_url")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let response_url = v
+        .get("response_url")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
     if status_url.is_empty() || response_url.is_empty() {
-        return Err(format!("fal submit gave no queue urls: {}", text.chars().take(200).collect::<String>()));
+        return Err(format!(
+            "fal submit gave no queue urls: {}",
+            text.chars().take(200).collect::<String>()
+        ));
     }
     for _ in 0..10 {
         std::thread::sleep(std::time::Duration::from_secs(2));
@@ -249,10 +286,16 @@ fn gen_fal(token: &str, model: &str, prompt: &str, size: &str) -> Result<ImageBy
                 if let Some(u) = rv.pointer("/images/0/url").and_then(Value::as_str) {
                     return Ok(ImageBytes::Url(u.to_string()));
                 }
-                return Err(format!("fal result had no images[0].url: {}", rtext.chars().take(200).collect::<String>()));
+                return Err(format!(
+                    "fal result had no images[0].url: {}",
+                    rtext.chars().take(200).collect::<String>()
+                ));
             }
             "FAILED" | "CANCELLED" => {
-                return Err(format!("fal job failed: {}", stext.chars().take(200).collect::<String>()));
+                return Err(format!(
+                    "fal job failed: {}",
+                    stext.chars().take(200).collect::<String>()
+                ));
             }
             _ => continue,
         }
@@ -263,7 +306,12 @@ fn gen_fal(token: &str, model: &str, prompt: &str, size: &str) -> Result<ImageBy
 fn fal_size_preset(size: &str) -> &'static str {
     let (w, h) = size
         .split_once('x')
-        .map(|(a, b)| (a.parse::<u32>().unwrap_or(1024), b.parse::<u32>().unwrap_or(1024)))
+        .map(|(a, b)| {
+            (
+                a.parse::<u32>().unwrap_or(1024),
+                b.parse::<u32>().unwrap_or(1024),
+            )
+        })
         .unwrap_or((1024, 1024));
     if w == h {
         "square_hd"
@@ -277,34 +325,70 @@ fn fal_size_preset(size: &str) -> &'static str {
 fn providers() -> Vec<(&'static str, &'static str, &'static str)> {
     // (name, env key, default model)
     vec![
-        ("openrouter", "OPENROUTER_API_KEY", "google/gemini-3.1-flash-image"),
+        (
+            "openrouter",
+            "OPENROUTER_API_KEY",
+            "google/gemini-3.1-flash-image",
+        ),
         ("openai", "OPENAI_API_KEY", "gpt-image-1"),
         ("xai", "XAI_API_KEY", "grok-imagine-image"),
         ("fal", "FAL_KEY", "fal-ai/flux-2/klein/9b"),
-        ("deepinfra", "DEEPINFRA_API_KEY", "black-forest-labs/FLUX-1-schnell"),
+        (
+            "deepinfra",
+            "DEEPINFRA_API_KEY",
+            "black-forest-labs/FLUX-1-schnell",
+        ),
     ]
 }
 
-fn generate(provider: &str, token: &str, model: &str, prompt: &str, size: &str) -> Result<ImageBytes, String> {
+fn generate(
+    provider: &str,
+    token: &str,
+    model: &str,
+    prompt: &str,
+    size: &str,
+) -> Result<ImageBytes, String> {
     match provider {
         "openrouter" => gen_openai_style(
-            provider, "https://openrouter.ai/api/v1/images/generations",
-            token, model, prompt, Some(size), &[],
+            provider,
+            "https://openrouter.ai/api/v1/images/generations",
+            token,
+            model,
+            prompt,
+            Some(size),
+            &[],
         ),
         "openai" => gen_openai_style(
-            provider, "https://api.openai.com/v1/images/generations",
-            token, model, prompt, Some(size), &[],
+            provider,
+            "https://api.openai.com/v1/images/generations",
+            token,
+            model,
+            prompt,
+            Some(size),
+            &[],
         ),
         "xai" => gen_openai_style(
-            provider, "https://api.x.ai/v1/images/generations",
-            token, model, prompt, None, &[("response_format", json!("b64_json"))],
+            provider,
+            "https://api.x.ai/v1/images/generations",
+            token,
+            model,
+            prompt,
+            None,
+            &[("response_format", json!("b64_json"))],
         ),
         "fal" => gen_fal(token, model, prompt, size),
         "deepinfra" => gen_openai_style(
-            provider, "https://api.deepinfra.com/v1/openai/images/generations",
-            token, model, prompt, Some(size), &[],
+            provider,
+            "https://api.deepinfra.com/v1/openai/images/generations",
+            token,
+            model,
+            prompt,
+            Some(size),
+            &[],
         ),
-        other => Err(format!("unknown provider '{other}' — openrouter|openai|xai|fal|deepinfra")),
+        other => Err(format!(
+            "unknown provider '{other}' — openrouter|openai|xai|fal|deepinfra"
+        )),
     }
 }
 
@@ -320,8 +404,8 @@ fn out_path(arg: Option<&str>, session: &Value) -> PathBuf {
         name = format!("image-{ts}.png");
     }
     let path = if let Some(rest) = name.strip_prefix("~/") {
-        std::env::var_os("HOME")
-            .map(|h| PathBuf::from(h).join(rest))
+        std::env::home_dir()
+            .map(|h| h.join(rest))
             .unwrap_or_else(|| PathBuf::from(&name))
     } else {
         PathBuf::from(&name)
@@ -335,10 +419,18 @@ fn out_path(arg: Option<&str>, session: &Value) -> PathBuf {
 }
 
 fn mime_for(bytes: &[u8], path: &std::path::Path) -> &'static str {
-    if bytes.starts_with(b"\x89PNG") { return "image/png"; }
-    if bytes.starts_with(b"\xff\xd8\xff") { return "image/jpeg"; }
-    if bytes.starts_with(b"RIFF") { return "image/webp"; }
-    if bytes.starts_with(b"GIF8") { return "image/gif"; }
+    if bytes.starts_with(b"\x89PNG") {
+        return "image/png";
+    }
+    if bytes.starts_with(b"\xff\xd8\xff") {
+        return "image/jpeg";
+    }
+    if bytes.starts_with(b"RIFF") {
+        return "image/webp";
+    }
+    if bytes.starts_with(b"GIF8") {
+        return "image/gif";
+    }
     match path.extension().and_then(|e| e.to_str()) {
         Some("jpg") | Some("jpeg") => "image/jpeg",
         Some("webp") => "image/webp",
@@ -356,7 +448,8 @@ fn save_image(img: &ImageBytes, path: &std::path::Path) -> Result<u64, String> {
     match img {
         ImageBytes::B64(b) => {
             let bytes = b64_decode(b)?;
-            std::fs::write(path, &bytes).map_err(|e| format!("couldn't write {}: {e}", path.display()))?;
+            std::fs::write(path, &bytes)
+                .map_err(|e| format!("couldn't write {}: {e}", path.display()))?;
             Ok(bytes.len() as u64)
         }
         ImageBytes::Url(u) => {
@@ -380,27 +473,43 @@ fn call_tool(name: &str, args: &Value, session: &Value) -> Value {
     if name != "image_gen" {
         return json!({ "content": format!("unknown tool: {name}"), "is_error": true });
     }
-    let prompt = args.get("prompt").and_then(Value::as_str).unwrap_or("").trim();
+    let prompt = args
+        .get("prompt")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim();
     if prompt.is_empty() {
         return json!({ "content": "image_gen needs a prompt", "is_error": true });
     }
-    let size = args.get("size").and_then(Value::as_str).unwrap_or("1024x1024");
+    let size = args
+        .get("size")
+        .and_then(Value::as_str)
+        .unwrap_or("1024x1024");
     let model_arg = args.get("model").and_then(Value::as_str).unwrap_or("");
-    let requested = args.get("provider").and_then(Value::as_str).unwrap_or("auto");
+    let requested = args
+        .get("provider")
+        .and_then(Value::as_str)
+        .unwrap_or("auto");
 
     let mut tried: Vec<String> = Vec::new();
     let targets: Vec<(&str, &str, &str)> = if requested == "auto" || requested.is_empty() {
         providers()
             .into_iter()
-            .filter(|(_, env, _)| std::env::var(env).map(|v| !v.trim().is_empty()).unwrap_or(false))
+            .filter(|(_, env, _)| {
+                std::env::var(env)
+                    .map(|v| !v.trim().is_empty())
+                    .unwrap_or(false)
+            })
             .collect()
     } else {
         match providers().into_iter().find(|(n, _, _)| *n == requested) {
             Some(p) => vec![p],
-            None => return json!({
-                "content": format!("unknown provider '{requested}' — openrouter|openai|xai|fal|deepinfra"),
-                "is_error": true,
-            }),
+            None => {
+                return json!({
+                    "content": format!("unknown provider '{requested}' — openrouter|openai|xai|fal|deepinfra"),
+                    "is_error": true,
+                });
+            }
         }
     };
     if targets.is_empty() {
@@ -462,14 +571,22 @@ fn call_tool(name: &str, args: &Value, session: &Value) -> Value {
 fn run_command(argv: &[&str]) -> String {
     let configured: Vec<&str> = providers()
         .iter()
-        .filter(|(_, env, _)| std::env::var(env).map(|v| !v.trim().is_empty()).unwrap_or(false))
+        .filter(|(_, env, _)| {
+            std::env::var(env)
+                .map(|v| !v.trim().is_empty())
+                .unwrap_or(false)
+        })
         .map(|(n, _, _)| *n)
         .collect();
     match argv.first().copied() {
         _ => format!(
             "gray-imagegen {} — image_gen tool. Providers probed in order: openrouter → openai → xai → fal → deepinfra. Configured: {}",
             env!("CARGO_PKG_VERSION"),
-            if configured.is_empty() { "none".into() } else { configured.join(", ") }
+            if configured.is_empty() {
+                "none".into()
+            } else {
+                configured.join(", ")
+            }
         ),
     }
 }
@@ -516,7 +633,9 @@ fn main_imagegen() -> std::io::Result<()> {
     let mut stdout = std::io::stdout();
     for line in stdin.lock().lines() {
         let line = line?;
-        let Ok(req) = serde_json::from_str::<Value>(&line) else { continue };
+        let Ok(req) = serde_json::from_str::<Value>(&line) else {
+            continue;
+        };
         let (reply, exit) = handle_imagegen(&req);
         if let Some(reply) = reply {
             writeln!(stdout, "{reply}")?;
@@ -534,7 +653,9 @@ mod tests {
     use super::*;
 
     fn call(method: &str, params: Value) -> Value {
-        handle_imagegen(&json!({ "id": 1, "method": method, "params": params })).0.unwrap()
+        handle_imagegen(&json!({ "id": 1, "method": method, "params": params }))
+            .0
+            .unwrap()
     }
 
     #[test]
@@ -568,7 +689,13 @@ mod tests {
 
     #[test]
     fn no_provider_is_clear_error() {
-        for k in ["OPENROUTER_API_KEY", "OPENAI_API_KEY", "XAI_API_KEY", "FAL_KEY", "DEEPINFRA_API_KEY"] {
+        for k in [
+            "OPENROUTER_API_KEY",
+            "OPENAI_API_KEY",
+            "XAI_API_KEY",
+            "FAL_KEY",
+            "DEEPINFRA_API_KEY",
+        ] {
             unsafe { std::env::remove_var(k) };
         }
         let r = call(
@@ -576,7 +703,12 @@ mod tests {
             json!({ "name": "image_gen", "args": {"prompt": "a cat"}, "session": {} }),
         );
         assert_eq!(r["result"]["is_error"], true);
-        assert!(r["result"]["content"].as_str().unwrap().contains("OPENROUTER_API_KEY"));
+        assert!(
+            r["result"]["content"]
+                .as_str()
+                .unwrap()
+                .contains("OPENROUTER_API_KEY")
+        );
     }
 
     #[test]
@@ -591,17 +723,37 @@ mod tests {
 
     #[test]
     fn empty_prompt_and_bad_provider() {
-        let r = call("tool/call", json!({ "name": "image_gen", "args": {"prompt": " "}, "session": {} }));
+        let r = call(
+            "tool/call",
+            json!({ "name": "image_gen", "args": {"prompt": " "}, "session": {} }),
+        );
         assert_eq!(r["result"]["is_error"], true);
-        let r = call("tool/call", json!({ "name": "image_gen", "args": {"prompt": "x", "provider": "zzz"}, "session": {} }));
-        assert!(r["result"]["content"].as_str().unwrap().contains("unknown provider"));
+        let r = call(
+            "tool/call",
+            json!({ "name": "image_gen", "args": {"prompt": "x", "provider": "zzz"}, "session": {} }),
+        );
+        assert!(
+            r["result"]["content"]
+                .as_str()
+                .unwrap()
+                .contains("unknown provider")
+        );
     }
 
     #[test]
     fn mime_sniffing() {
-        assert_eq!(mime_for(b"\x89PNGabc", std::path::Path::new("x.png")), "image/png");
-        assert_eq!(mime_for(b"\xff\xd8\xffxx", std::path::Path::new("x.bin")), "image/jpeg");
-        assert_eq!(mime_for(b"???", std::path::Path::new("x.webp")), "image/webp");
+        assert_eq!(
+            mime_for(b"\x89PNGabc", std::path::Path::new("x.png")),
+            "image/png"
+        );
+        assert_eq!(
+            mime_for(b"\xff\xd8\xffxx", std::path::Path::new("x.bin")),
+            "image/jpeg"
+        );
+        assert_eq!(
+            mime_for(b"???", std::path::Path::new("x.webp")),
+            "image/webp"
+        );
     }
 
     #[test]
