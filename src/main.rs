@@ -37,6 +37,11 @@ fn manifest() -> Value {
         "protocol": "2.0",
         "tools": tools,
         "commands": ["/mediagen", "/imagegen", "/videogen"],
+        "command_descriptions": {
+            "/mediagen": "list the image and video generators",
+            "/imagegen": "show image providers that have keys set",
+            "/videogen": "show video providers and pending jobs",
+        },
     })
 }
 
