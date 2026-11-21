@@ -410,10 +410,10 @@ fn out_path(arg: Option<&str>, session: &Value) -> PathBuf {
     } else {
         PathBuf::from(&name)
     };
-    if path.is_relative() {
-        if let Some(cwd) = session.pointer("/cwd").and_then(Value::as_str) {
-            return PathBuf::from(cwd).join(path);
-        }
+    if path.is_relative()
+        && let Some(cwd) = session.pointer("/cwd").and_then(Value::as_str)
+    {
+        return PathBuf::from(cwd).join(path);
     }
     path
 }
@@ -440,10 +440,10 @@ fn mime_for(bytes: &[u8], path: &std::path::Path) -> &'static str {
 }
 
 fn save_image(img: &ImageBytes, path: &std::path::Path) -> Result<u64, String> {
-    if let Some(parent) = path.parent() {
-        if !parent.as_os_str().is_empty() {
-            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-        }
+    if let Some(parent) = path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     match img {
         ImageBytes::B64(b) => {
@@ -544,13 +544,14 @@ fn call_tool(name: &str, args: &Value, session: &Value) -> Value {
                         let mut result = json!({
                             "content": format!("saved {} ({} bytes, {name}/{model})", path.display(), bytes)
                         });
-                        if bytes > 0 && bytes <= MEDIA_CAP {
-                            if let Ok(data) = std::fs::read(&path) {
-                                result["images"] = json!([{
-                                    "mime": mime_for(&data, &path),
-                                    "data_base64": b64_encode(&data),
-                                }]);
-                            }
+                        if bytes > 0
+                            && bytes <= MEDIA_CAP
+                            && let Ok(data) = std::fs::read(&path)
+                        {
+                            result["images"] = json!([{
+                                "mime": mime_for(&data, &path),
+                                "data_base64": b64_encode(&data),
+                            }]);
                         }
                         result
                     }
@@ -578,17 +579,16 @@ fn run_command(argv: &[&str]) -> String {
         })
         .map(|(n, _, _)| *n)
         .collect();
-    match argv.first().copied() {
-        _ => format!(
-            "gray-imagegen {} — image_gen tool. Providers probed in order: openrouter → openai → xai → fal → deepinfra. Configured: {}",
-            env!("CARGO_PKG_VERSION"),
-            if configured.is_empty() {
-                "none".into()
-            } else {
-                configured.join(", ")
-            }
-        ),
-    }
+    let _ = argv;
+    format!(
+        "gray-imagegen {} — image_gen tool. Providers probed in order: openrouter → openai → xai → fal → deepinfra. Configured: {}",
+        env!("CARGO_PKG_VERSION"),
+        if configured.is_empty() {
+            "none".into()
+        } else {
+            configured.join(", ")
+        }
+    )
 }
 
 pub fn handle_imagegen(req: &Value) -> (Option<Value>, bool) {
